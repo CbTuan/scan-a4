@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>Scan A4</title>
+<style>
+  /* ===== Reset & bien mau ===== */
+  :root{
+    --bg:#0f172a;         /* nen chinh (vung anh) */
+    --panel:#1e293b;      /* panel dieu khien */
+    --panel-2:#273449;
+    --line:#334155;
+    --text:#e2e8f0;
+    --muted:#94a3b8;
+    --accent:#38bdf8;     /* xanh muc - nut chinh */
+    --accent-ink:#052032;
+    --danger:#f87171;
+    --ok:#34d399;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    background:var(--bg);color:var(--text);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    display:flex;flex-direction:column;overflow:hidden;
+    padding-top:env(safe-area-inset-top);
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  button{font-family:inherit;color:inherit;cursor:pointer;border:none;background:none}
+
+  header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:12px 16px;border-bottom:1px solid var(--line);
+    background:var(--panel);flex-shrink:0;
+  }
+  header h1{font-size:16px;font-weight:600;letter-spacing:.3px;display:flex;align-items:center;gap:8px}
+  header h1 span{color:var(--accent)}
+  #pageCount{font-size:13px;color:var(--muted)}
+
+  /* ===== Vung man hinh ===== */
+  .screen{flex:1;display:none;flex-direction:column;min-height:0;position:relative}
+  .screen.active{display:flex}
+
+  /* --- Man hinh camera --- */
+  #camWrap{flex:1;position:relative;background:#000;overflow:hidden;display:flex;align-items:center;justify-content:center}
+  #video{width:100%;height:100%;object-fit:cover}
+  #camHint{position:absolute;top:14px;left:0;right:0;text-align:center;font-size:13px;color:#cbd5e1;
+    text-shadow:0 1px 3px rgba(0,0,0,.8);pointer-events:none;padding:0 20px}
+  #camError{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;
+    gap:10px;padding:24px;text-align:center;color:var(--muted)}
+  #camError b{color:var(--text);font-size:15px}
+
+  .toolbar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:16px 28px calc(16px + env(safe-area-inset-bottom));
+    background:var(--panel);border-top:1px solid var(--line);flex-shrink:0;gap:16px;
+  }
+  .tb-side{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:var(--muted)}
+  .tb-side button{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:var(--muted);padding:6px}
+  .tb-side .ico{width:26px;height:26px}
+  #thumbBtn{position:relative}
+  #thumbBtn img{width:34px;height:34px;object-fit:cover;border-radius:6px;border:1px solid var(--line)}
+  #thumbBadge{position:absolute;top:-6px;right:-6px;background:var(--accent);color:var(--accent-ink);
+    font-size:10px;font-weight:700;min-width:16px;height:16px;border-radius:8px;display:flex;
+    align-items:center;justify-content:center;padding:0 4px}
+
+  .shutter{width:72px;height:72px;border-radius:50%;background:#fff;border:4px solid #cbd5e1;
+    flex-shrink:0;transition:transform .08s;box-shadow:0 0 0 4px rgba(255,255,255,.15)}
+  .shutter:active{transform:scale(.92)}
+  .shutter[disabled]{opacity:.4}
+
+  /* --- Man hinh chinh goc --- */
+  #cropWrap{flex:1;position:relative;background:#000;overflow:hidden;touch-action:none}
+  #cropCanvas{position:absolute;left:0;top:0}
+  #cropHint{position:absolute;bottom:10px;left:0;right:0;text-align:center;font-size:12px;color:#cbd5e1;
+    text-shadow:0 1px 3px rgba(0,0,0,.8);pointer-events:none}
+
+  /* --- Man hinh loc mau / preview --- */
+  #resultWrap{flex:1;position:relative;background:#0b1220;overflow:auto;display:flex;align-items:flex-start;
+    justify-content:center;padding:16px}
+  #resultImg{max-width:100%;height:auto;border-radius:4px;box-shadow:0 4px 24px rgba(0,0,0,.5);background:#fff}
+  .modes{display:flex;gap:8px;padding:12px 16px;background:var(--panel);border-top:1px solid var(--line);
+    overflow-x:auto;flex-shrink:0}
+  .mode{padding:9px 16px;border-radius:20px;background:var(--panel-2);color:var(--muted);font-size:13px;
+    white-space:nowrap;border:1px solid transparent}
+  .mode.on{background:var(--accent);color:var(--accent-ink);font-weight:600}
+
+  /* --- Man hinh danh sach trang --- */
+  #pagesList{flex:1;overflow-y:auto;padding:12px;display:grid;grid-template-columns:repeat(2,1fr);gap:12px;align-content:start}
+  .pcard{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;position:relative}
+  .pcard img{width:100%;display:block;aspect-ratio:210/297;object-fit:cover;background:#fff}
+  .pcard .num{position:absolute;top:6px;left:6px;background:rgba(15,23,42,.85);color:var(--text);
+    font-size:12px;font-weight:600;width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center}
+  .pcard .acts{display:flex;border-top:1px solid var(--line)}
+  .pcard .acts button{flex:1;padding:8px;font-size:12px;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:4px}
+  .pcard .acts button:active{background:var(--panel-2)}
+  .pcard .acts button.del{color:var(--danger)}
+  .pcard .acts button+button{border-left:1px solid var(--line)}
+  #pagesEmpty{grid-column:1/-1;text-align:center;color:var(--muted);padding:60px 20px;font-size:14px;line-height:1.6}
+
+  /* ===== Thanh hanh dong day man hinh ===== */
+  .actbar{display:flex;gap:10px;padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+    background:var(--panel);border-top:1px solid var(--line);flex-shrink:0}
+  .btn{flex:1;padding:14px;border-radius:10px;font-size:15px;font-weight:600;display:flex;
+    align-items:center;justify-content:center;gap:8px;background:var(--panel-2);color:var(--text)}
+  .btn:active{opacity:.8}
+  .btn.primary{background:var(--accent);color:var(--accent-ink)}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--muted);flex:0 0 auto;padding:14px 18px}
+
+  /* ===== Nut menu duoi cung (chuyen tab) ===== */
+  #fabExport{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:20;
+    background:var(--ok);color:#052a1c;font-weight:700;padding:14px 20px;border-radius:28px;
+    box-shadow:0 6px 20px rgba(0,0,0,.4);display:none;align-items:center;gap:8px;font-size:15px}
+
+  /* ===== Loading overlay ===== */
+  #loading{position:fixed;inset:0;z-index:100;background:rgba(15,23,42,.92);display:none;
+    flex-direction:column;align-items:center;justify-content:center;gap:16px}
+  #loading .spin{width:44px;height:44px;border:4px solid var(--line);border-top-color:var(--accent);
+    border-radius:50%;animation:spin 1s linear infinite}
+  #loadTxt{color:var(--muted);font-size:14px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .ico{display:inline-block;vertical-align:middle}
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span>◈</span> Scan A4</h1>
+  <div id="pageCount">0 trang</div>
+</header>
+
+<!-- ===== MAN HINH 1: CAMERA ===== -->
+<section id="screenCam" class="screen active">
+  <div id="camWrap">
+    <video id="video" autoplay playsinline muted></video>
+    <div id="camHint">Đặt tờ giấy A4 nằm gọn trong khung, đủ sáng</div>
+    <div id="camError">
+      <b>Không mở được camera</b>
+      <div>Hãy cấp quyền camera cho trang, và mở qua địa chỉ <b>https</b> (hoặc localhost).</div>
+      <button class="btn primary" style="flex:0 0 auto;padding:12px 20px" onclick="startCamera()">Thử lại</button>
+    </div>
+  </div>
+  <div class="toolbar">
+    <div class="tb-side">
+      <button id="pickBtn" title="Chọn ảnh có sẵn">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+        Ảnh có sẵn
+      </button>
+    </div>
+    <button id="shutter" class="shutter" aria-label="Chụp"></button>
+    <div class="tb-side">
+      <button id="thumbBtn" title="Xem các trang">
+        <span id="thumbBadge" style="display:none">0</span>
+        <img id="thumbImg" alt="" style="display:none">
+        <svg id="thumbIco" class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:26px;height:26px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+        Các trang
+      </button>
+    </div>
+  </div>
+  <input type="file" id="fileInput" accept="image/*" hidden>
+</section>
+
+<!-- ===== MAN HINH 2: CHINH 4 GOC ===== -->
+<section id="screenCrop" class="screen">
+  <div id="cropWrap">
+    <canvas id="cropCanvas"></canvas>
+    <div id="cropHint">Kéo 4 chấm về đúng 4 góc tờ giấy</div>
+  </div>
+  <div class="actbar">
+    <button class="btn ghost" id="cropBack">Hủy</button>
+    <button class="btn primary" id="cropNext">Tiếp tục →</button>
+  </div>
+</section>
+
+<!-- ===== MAN HINH 3: LOC MAU / PREVIEW ===== -->
+<section id="screenResult" class="screen">
+  <div id="resultWrap"><img id="resultImg" alt=""></div>
+  <div class="modes" id="modes">
+    <button class="mode on" data-mode="bw">Đen trắng</button>
+    <button class="mode" data-mode="gray">Xám</button>
+    <button class="mode" data-mode="color">Màu tăng nét</button>
+    <button class="mode" data-mode="rotate">Xoay 90°</button>
+  </div>
+  <div class="actbar">
+    <button class="btn ghost" id="resBack">← Chụp lại</button>
+    <button class="btn primary" id="resAdd">Thêm vào tài liệu</button>
+  </div>
+</section>
+
+<!-- ===== MAN HINH 4: DANH SACH TRANG ===== -->
+<section id="screenPages" class="screen">
+  <div id="pagesList">
+    <div id="pagesEmpty">Chưa có trang nào.<br>Quay lại chụp để thêm trang giấy A4.</div>
+  </div>
+  <div class="actbar">
+    <button class="btn" id="pagesBack">＋ Chụp thêm</button>
+    <button class="btn primary" id="exportBtn">Xuất PDF</button>
+  </div>
+</section>
+
+<!-- ===== Loading ===== -->
+<div id="loading"><div class="spin"></div><div id="loadTxt">Đang xử lý…</div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script>
+/* =========================================================================
+   Scan A4 - chup ban giay A4 -> lam sach kieu photocopy -> xuat PDF
+   Xu ly anh: OpenCV.js | Xuat PDF: pdf-lib | Chay hoan toan tren may
+   ========================================================================= */
+
+// --- Kich thuoc dau ra chuan A4 (~150 DPI) ---
+const A4_W = 1240, A4_H = 1754;   // ty le 1:1.414
+
+// --- Trang thai ---
+let cvReady = false;
+let stream = null;
+let capturedCanvas = null;   // anh vua chup/chon (full)
+let corners = [];            // 4 goc [{x,y}] tren toa do canvas hien thi
+let cropScale = 1;           // ty le canvas hien thi so voi anh goc
+let currentMode = 'bw';
+let currentRotate = 0;       // do xoay ap dung cho ket qua (0/90/180/270)
+let warpedMat = null;        // anh da nan thang (mau) - de doi che do khong phai nan lai
+const pages = [];            // [{dataUrl}] cac trang da them
+const IS_LOCAL = !window.isSecureContext; // mo cuc bo (file/content) -> camera + tai OpenCV bi chan
+
+// --- Tien ich DOM ---
+const $ = id => document.getElementById(id);
+function show(screenId){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  $(screenId).classList.add('active');
+}
+function loading(on, txt){ $('loadTxt').textContent = txt||'Đang xử lý…'; $('loading').style.display = on?'flex':'none'; }
+function updateCount(){
+  $('pageCount').textContent = pages.length + ' trang';
+  const b=$('thumbBadge'); b.style.display = pages.length?'flex':'none'; b.textContent=pages.length;
+  if(pages.length){
+    $('thumbImg').src = pages[pages.length-1].dataUrl; $('thumbImg').style.display='block'; $('thumbIco').style.display='none';
+  }else{
+    $('thumbImg').style.display='none'; $('thumbIco').style.display='inline-block';
+  }
+}
+
+/* ===== Nap OpenCV.js (lazy - chi khi can) ===== */
+function loadOpenCV(){
+  return new Promise((resolve,reject)=>{
+    if(cvReady) return resolve();
+    if(window._cvLoading) { window._cvLoading.then(resolve,reject); return; }
+    loading(true,'Đang tải bộ xử lý ảnh (lần đầu)…');
+    window._cvLoading = new Promise((res,rej)=>{
+      const s=document.createElement('script');
+      s.src='https://docs.opencv.org/4.10.0/opencv.js';
+      s.async=true;
+      s.onload=()=>{
+        if(window.cv && cv.Mat){ cvReady=true; res(); }
+        else cv['onRuntimeInitialized']=()=>{ cvReady=true; res(); };
+      };
+      s.onerror=()=>rej(new Error('Khong tai duoc OpenCV.js'));
+      document.body.appendChild(s);
+    });
+    window._cvLoading.then(()=>{loading(false);resolve();}, e=>{loading(false);reject(e);});
+  });
+}
+
+/* ===== Camera ===== */
+async function startCamera(){
+  $('camError').style.display='none';
+  try{
+    if(stream) stream.getTracks().forEach(t=>t.stop());
+    stream = await navigator.mediaDevices.getUserMedia({
+      video:{ facingMode:{ideal:'environment'}, width:{ideal:1920}, height:{ideal:1080} },
+      audio:false
+    });
+    $('video').srcObject = stream;
+  }catch(e){
+    $('camError').style.display='flex';
+  }
+}
+function stopCamera(){ if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } }
+
+/* ===== Chup 1 khung hinh ===== */
+$('shutter').onclick = async ()=>{
+  const v=$('video');
+  if(!v.videoWidth){ return; }
+  const c=document.createElement('canvas');
+  c.width=v.videoWidth; c.height=v.videoHeight;
+  c.getContext('2d').drawImage(v,0,0);
+  await handleCaptured(c);
+};
+
+/* ===== Chon anh co san ===== */
+$('pickBtn').onclick = ()=> $('fileInput').click();
+$('fileInput').onchange = e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const img=new Image();
+  img.onload=async ()=>{
+    const c=document.createElement('canvas');
+    c.width=img.naturalWidth; c.height=img.naturalHeight;
+    c.getContext('2d').drawImage(img,0,0);
+    await handleCaptured(c);
+  };
+  img.src=URL.createObjectURL(f);
+  e.target.value='';
+};
+
+/* ===== Sau khi co anh: sang man hinh chinh goc ===== */
+async function handleCaptured(canvas){
+  capturedCanvas = canvas;
+  if(IS_LOCAL){ alert('Ban dang mo file cuc bo nen khong xu ly duoc anh. Hay dua file len https (GitHub Pages) roi mo link - khi do ca camera lan xu ly anh se chay.'); return; }
+  try{ await loadOpenCV(); }catch(err){ alert('Khong tai duoc bo xu ly anh. Kiem tra ket noi mang, hoac mo lai bang link https.'); return; }
+  stopCamera();
+  detectAndSetupCrop();
+  show('screenCrop');
+}
+
+/* ===== Tu dong do 4 goc tai lieu ===== */
+function detectDocumentCorners(srcMat){
+  let g=new cv.Mat(), blur=new cv.Mat(), edge=new cv.Mat();
+  cv.cvtColor(srcMat,g,cv.COLOR_RGBA2GRAY);
+  cv.GaussianBlur(g,blur,new cv.Size(5,5),0);
+  cv.Canny(blur,edge,60,180);
+  let kernel=cv.Mat.ones(5,5,cv.CV_8U);
+  cv.dilate(edge,edge,kernel);
+  let contours=new cv.MatVector(), hier=new cv.Mat();
+  cv.findContours(edge,contours,hier,cv.RETR_EXTERNAL,cv.CHAIN_APPROX_SIMPLE);
+  let best=null,bestArea=srcMat.rows*srcMat.cols*0.15; // it nhat 15% dien tich
+  for(let i=0;i<contours.size();i++){
+    let cnt=contours.get(i);
+    let peri=cv.arcLength(cnt,true);
+    let approx=new cv.Mat();
+    cv.approxPolyDP(cnt,approx,0.02*peri,true);
+    if(approx.rows===4){
+      let area=Math.abs(cv.contourArea(approx));
+      if(area>bestArea){
+        bestArea=area;
+        if(best) best.delete();
+        best=approx.clone();
+      }
+    }
+    approx.delete(); cnt.delete();
+  }
+  let pts=null;
+  if(best){
+    pts=[];
+    for(let i=0;i<4;i++) pts.push({x:best.data32S[i*2], y:best.data32S[i*2+1]});
+    best.delete();
+    pts=orderCorners(pts);
+  }
+  g.delete();blur.delete();edge.delete();kernel.delete();contours.delete();hier.delete();
+  return pts;
+}
+// Sap xep 4 goc theo: TL, TR, BR, BL
+function orderCorners(p){
+  p=p.slice();
+  p.sort((a,b)=>a.y-b.y);
+  let top=p.slice(0,2).sort((a,b)=>a.x-b.x);
+  let bot=p.slice(2,4).sort((a,b)=>a.x-b.x);
+  return [top[0],top[1],bot[1],bot[0]]; // TL,TR,BR,BL
+}
+
+/* ===== Chuan bi canvas chinh goc ===== */
+function detectAndSetupCrop(){
+  const wrap=$('cropWrap'), cv2=$('cropCanvas');
+  const maxW=wrap.clientWidth, maxH=wrap.clientHeight;
+  const iw=capturedCanvas.width, ih=capturedCanvas.height;
+  cropScale=Math.min(maxW/iw, maxH/ih);
+  const dw=Math.round(iw*cropScale), dh=Math.round(ih*cropScale);
+  cv2.width=dw; cv2.height=dh;
+  cv2.style.left=((maxW-dw)/2)+'px';
+  cv2.style.top=((maxH-dh)/2)+'px';
+
+  // Do goc tren anh goc
+  let src=cv.imread(capturedCanvas);
+  let detected=null;
+  try{ detected=detectDocumentCorners(src); }catch(e){}
+  src.delete();
+
+  if(detected){
+    corners=detected.map(p=>({x:p.x*cropScale, y:p.y*cropScale}));
+  }else{
+    // Khong do duoc -> khung mac dinh thu vao 8%
+    const mx=dw*0.08, my=dh*0.08;
+    corners=[{x:mx,y:my},{x:dw-mx,y:my},{x:dw-mx,y:dh-my},{x:mx,y:dh-my}];
+    $('cropHint').textContent='Chưa dò được viền — kéo 4 chấm về đúng 4 góc giấy';
+  }
+  drawCrop();
+}
+
+/* ===== Ve anh + 4 goc + khung ===== */
+function drawCrop(){
+  const cv2=$('cropCanvas'), ctx=cv2.getContext('2d');
+  ctx.clearRect(0,0,cv2.width,cv2.height);
+  ctx.drawImage(capturedCanvas,0,0,cv2.width,cv2.height);
+  // Lop mo ngoai khung
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0,0,cv2.width,cv2.height);
+  ctx.moveTo(corners[0].x,corners[0].y);
+  for(let i=1;i<4;i++) ctx.lineTo(corners[i].x,corners[i].y);
+  ctx.closePath();
+  ctx.fillStyle='rgba(15,23,42,.55)';
+  ctx.fill('evenodd');
+  ctx.restore();
+  // Duong khung
+  ctx.beginPath();
+  ctx.moveTo(corners[0].x,corners[0].y);
+  for(let i=1;i<4;i++) ctx.lineTo(corners[i].x,corners[i].y);
+  ctx.closePath();
+  ctx.strokeStyle='#38bdf8'; ctx.lineWidth=2; ctx.stroke();
+  // 4 cham
+  corners.forEach(c=>{
+    ctx.beginPath(); ctx.arc(c.x,c.y,11,0,7); ctx.fillStyle='#38bdf8'; ctx.fill();
+    ctx.beginPath(); ctx.arc(c.x,c.y,5,0,7); ctx.fillStyle='#fff'; ctx.fill();
+  });
+}
+
+/* ===== Keo 4 goc bang cham ===== */
+let dragIdx=-1;
+function ptFromEvent(e){
+  const r=$('cropCanvas').getBoundingClientRect();
+  const t=e.touches?e.touches[0]:e;
+  return {x:t.clientX-r.left, y:t.clientY-r.top};
+}
+function onDragStart(e){
+  const p=ptFromEvent(e); let best=-1,bd=900;
+  corners.forEach((c,i)=>{const d=(c.x-p.x)**2+(c.y-p.y)**2; if(d<bd){bd=d;best=i;}});
+  dragIdx=best; if(best>=0) e.preventDefault();
+}
+function onDragMove(e){
+  if(dragIdx<0) return; e.preventDefault();
+  const p=ptFromEvent(e), cv2=$('cropCanvas');
+  corners[dragIdx]={x:Math.max(0,Math.min(cv2.width,p.x)), y:Math.max(0,Math.min(cv2.height,p.y))};
+  drawCrop();
+}
+function onDragEnd(){ dragIdx=-1; }
+['touchstart','mousedown'].forEach(ev=>$('cropCanvas').addEventListener(ev,onDragStart,{passive:false}));
+['touchmove','mousemove'].forEach(ev=>$('cropCanvas').addEventListener(ev,onDragMove,{passive:false}));
+['touchend','mouseup','mouseleave'].forEach(ev=>$('cropCanvas').addEventListener(ev,onDragEnd));
+
+/* ===== Nan thang ve kho A4 ===== */
+function warpToA4(){
+  let src=cv.imread(capturedCanvas);
+  // doi toa do hien thi -> toa do anh goc
+  const s=1/cropScale;
+  const c=corners.map(p=>({x:p.x*s, y:p.y*s}));
+  let srcTri=cv.matFromArray(4,1,cv.CV_32FC2,[c[0].x,c[0].y, c[1].x,c[1].y, c[2].x,c[2].y, c[3].x,c[3].y]);
+  let dstTri=cv.matFromArray(4,1,cv.CV_32FC2,[0,0, A4_W,0, A4_W,A4_H, 0,A4_H]);
+  let M=cv.getPerspectiveTransform(srcTri,dstTri);
+  let dst=new cv.Mat();
+  cv.warpPerspective(src,dst,M,new cv.Size(A4_W,A4_H),cv.INTER_LINEAR,cv.BORDER_CONSTANT,new cv.Scalar(255,255,255,255));
+  src.delete();srcTri.delete();dstTri.delete();M.delete();
+  return dst; // mau (RGBA)
+}
+
+/* ===== Lam sach kieu photocopy =====
+   Chia nen (division normalization) de xoa bong, sang deu.
+   Tra ve canvas theo che do. */
+function processMode(mat, mode){
+  let out=new cv.Mat();
+  let gray=new cv.Mat();
+  cv.cvtColor(mat,gray,cv.COLOR_RGBA2GRAY);
+
+  // --- uoc luong nen bang blur manh, roi chia ---
+  let bg=new cv.Mat();
+  let k=Math.round(A4_W/12)|1; if(k%2===0)k++;
+  cv.GaussianBlur(gray,bg,new cv.Size(k,k),0);
+  let norm=new cv.Mat();
+  cv.divide(gray,bg,norm,255.0);   // norm = gray/bg*255 -> nen ~trang, chu ~sam
+
+  if(mode==='bw'){
+    // Nguong thich nghi -> giong photocopy den trang
+    let bw=new cv.Mat();
+    cv.adaptiveThreshold(norm,bw,255,cv.ADAPTIVE_THRESH_GAUSSIAN_C,cv.THRESH_BINARY,15,10);
+    cv.cvtColor(bw,out,cv.COLOR_GRAY2RGBA);
+    bw.delete();
+  }else if(mode==='gray'){
+    // Xam sang deu, tang tuong phan nhe
+    let g2=new cv.Mat();
+    norm.convertTo(g2,-1,1.15,-15);
+    cv.cvtColor(g2,out,cv.COLOR_GRAY2RGBA);
+    g2.delete();
+  }else{ // color - giu mau (con dau, chu ky), lam sang nen + tang net
+    // Chia nen tren tung kenh mau de xoa bong nhung giu mau
+    let rgb=new cv.Mat(); cv.cvtColor(mat,rgb,cv.COLOR_RGBA2RGB);
+    let ch=new cv.MatVector(); cv.split(rgb,ch);
+    let merged=new cv.MatVector();
+    for(let i=0;i<3;i++){
+      let bgc=new cv.Mat(), nc=new cv.Mat();
+      cv.GaussianBlur(ch.get(i),bgc,new cv.Size(k,k),0);
+      cv.divide(ch.get(i),bgc,nc,255.0);
+      nc.convertTo(nc,-1,1.1,-8);
+      merged.push_back(nc); bgc.delete();
+    }
+    let m3=new cv.Mat(); cv.merge(merged,m3);
+    cv.cvtColor(m3,out,cv.COLOR_RGB2RGBA);
+    rgb.delete();ch.delete();merged.delete();m3.delete();
+  }
+  gray.delete();bg.delete();norm.delete();
+
+  // xoay neu can
+  if(currentRotate){
+    let r=new cv.Mat();
+    let code = currentRotate===90?cv.ROTATE_90_CLOCKWISE : currentRotate===180?cv.ROTATE_180 : cv.ROTATE_90_COUNTERCLOCKWISE;
+    cv.rotate(out,r,code); out.delete(); out=r;
+  }
+
+  const canvas=document.createElement('canvas');
+  cv.imshow(canvas,out);
+  out.delete();
+  return canvas;
+}
+
+/* ===== Ren ket qua theo che do hien tai ===== */
+function renderResult(){
+  loading(true,'Đang làm sạch trang…');
+  setTimeout(()=>{
+    const canvas=processMode(warpedMat,currentMode);
+    $('resultImg').src=canvas.toDataURL('image/jpeg',0.9);
+    $('resultImg')._canvas=canvas;
+    loading(false);
+  },30);
+}
+
+/* ===== Nut man hinh chinh goc ===== */
+$('cropBack').onclick = ()=>{ show('screenCam'); startCamera(); };
+$('cropNext').onclick = ()=>{
+  loading(true,'Đang nắn thẳng trang…');
+  setTimeout(()=>{
+    if(warpedMat){warpedMat.delete();warpedMat=null;}
+    warpedMat=warpToA4();
+    currentRotate=0; currentMode='bw';
+    document.querySelectorAll('.mode').forEach(m=>m.classList.toggle('on',m.dataset.mode==='bw'));
+    loading(false);
+    show('screenResult');
+    renderResult();
+  },30);
+};
+
+/* ===== Chon che do loc / xoay ===== */
+$('modes').addEventListener('click', e=>{
+  const btn=e.target.closest('.mode'); if(!btn) return;
+  const m=btn.dataset.mode;
+  if(m==='rotate'){ currentRotate=(currentRotate+90)%360; renderResult(); return; }
+  currentMode=m;
+  document.querySelectorAll('.mode').forEach(x=>x.classList.remove('on'));
+  btn.classList.add('on');
+  renderResult();
+});
+
+/* ===== Nut man hinh ket qua ===== */
+$('resBack').onclick = ()=>{ show('screenCam'); startCamera(); };
+$('resAdd').onclick = ()=>{
+  const canvas=$('resultImg')._canvas;
+  pages.push({ dataUrl: canvas.toDataURL('image/jpeg',0.85) });
+  updateCount();
+  renderPages();
+  show('screenCam'); startCamera();
+};
+
+/* ===== Danh sach trang ===== */
+$('thumbBtn').onclick = ()=>{ stopCamera(); renderPages(); show('screenPages'); };
+$('pagesBack').onclick = ()=>{ show('screenCam'); startCamera(); };
+function renderPages(){
+  const list=$('pagesList');
+  if(!pages.length){ list.innerHTML='<div id="pagesEmpty">Chưa có trang nào.<br>Quay lại chụp để thêm trang giấy A4.</div>'; return; }
+  list.innerHTML='';
+  pages.forEach((p,i)=>{
+    const d=document.createElement('div'); d.className='pcard';
+    d.innerHTML=`<div class="num">${i+1}</div><img src="${p.dataUrl}">
+      <div class="acts">
+        <button data-up="${i}" ${i===0?'disabled style=opacity:.3':''}>▲ Lên</button>
+        <button data-down="${i}" ${i===pages.length-1?'disabled style=opacity:.3':''}>Xuống ▼</button>
+        <button class="del" data-del="${i}">🗑 Xóa</button>
+      </div>`;
+    list.appendChild(d);
+  });
+  list.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{pages.splice(+b.dataset.del,1);updateCount();renderPages();});
+  list.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>{const i=+b.dataset.up;[pages[i-1],pages[i]]=[pages[i],pages[i-1]];renderPages();});
+  list.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>{const i=+b.dataset.down;[pages[i+1],pages[i]]=[pages[i],pages[i+1]];renderPages();});
+}
+
+/* ===== Xuat PDF (dung khO A4) ===== */
+$('exportBtn').onclick = async ()=>{
+  if(!pages.length){ alert('Chưa có trang nào để xuất.'); return; }
+  loading(true,'Đang tạo file PDF…');
+  try{
+    const { PDFDocument } = PDFLib;
+    const pdf=await PDFDocument.create();
+    const PT_W=595.28, PT_H=841.89; // A4 tinh theo point
+    for(const pg of pages){
+      const jpg=await pdf.embedJpg(pg.dataUrl);
+      const page=pdf.addPage([PT_W,PT_H]);
+      page.drawImage(jpg,{x:0,y:0,width:PT_W,height:PT_H});
+    }
+    const bytes=await pdf.save();
+    const blob=new Blob([bytes],{type:'application/pdf'});
+    const url=URL.createObjectURL(blob);
+    const stamp=new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+    const a=document.createElement('a');
+    a.href=url; a.download=`Scan_A4_${stamp}.pdf`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),4000);
+    loading(false);
+  }catch(e){
+    loading(false); alert('Lỗi khi tạo PDF: '+e.message);
+  }
+};
+
+/* ===== Khoi dong ===== */
+window.addEventListener('load', ()=>{
+  updateCount();
+  if(IS_LOCAL){
+    // Mo cuc bo: camera va tai OpenCV deu bi chan -> bao ro thay vi de nguoi dung loay hoay
+    $('camError').querySelector('b').textContent='Cần mở qua https';
+    $('camError').querySelector('div').innerHTML='Bản này đang mở cục bộ (file trên máy) nên không dùng được camera và không xử lý được ảnh.<br><br>Hãy đưa file lên <b>GitHub Pages</b> rồi mở bằng link — khi đó mọi thứ chạy bình thường.';
+    $('camError').querySelector('button').style.display='none';
+    $('camError').style.display='flex';
+  }else{
+    startCamera();
+  }
+});
+window.addEventListener('pagehide', stopCamera);
+</script>
+</body>
+</html>
