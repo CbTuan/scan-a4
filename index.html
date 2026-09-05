@@ -250,6 +250,7 @@ function loadOpenCV(){
     if(window._cvLoading){ window._cvLoading.then(resolve,reject); return; }
     loading(true,'Đang tải bộ xử lý ảnh lần đầu (có thể mất 20–40 giây)…');
     const sources=[
+      './opencv.js',
       'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.11.0-release.1/dist/opencv.js',
       'https://docs.opencv.org/4.10.0/opencv.js'
     ];
