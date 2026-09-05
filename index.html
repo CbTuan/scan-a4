@@ -365,8 +365,9 @@ async function handleCaptured(canvas){
   if(IS_LOCAL){ alert('Ban dang mo file cuc bo nen khong xu ly duoc anh. Hay dua file len https (GitHub Pages) roi mo link - khi do ca camera lan xu ly anh se chay.'); return; }
   try{ await loadOpenCV(); }catch(err){ alert('Khong tai duoc bo xu ly anh. Kiem tra ket noi mang, hoac mo lai bang link https.'); return; }
   stopCamera();
-  detectAndSetupCrop();
   show('screenCrop');
+  // Doi layout de cropWrap co kich thuoc that roi moi ve (neu ve ngay se bi 0px -> mat anh)
+  requestAnimationFrame(()=>requestAnimationFrame(()=>detectAndSetupCrop()));
 }
 
 /* ===== Tu dong do 4 goc tai lieu ===== */
@@ -417,7 +418,8 @@ function orderCorners(p){
 /* ===== Chuan bi canvas chinh goc ===== */
 function detectAndSetupCrop(){
   const wrap=$('cropWrap'), cv2=$('cropCanvas');
-  const maxW=wrap.clientWidth, maxH=wrap.clientHeight;
+  let maxW=wrap.clientWidth, maxH=wrap.clientHeight;
+  if(maxW<10||maxH<10){ maxW=window.innerWidth; maxH=Math.round(window.innerHeight*0.7); } // phong ho
   const iw=capturedCanvas.width, ih=capturedCanvas.height;
   cropScale=Math.min(maxW/iw, maxH/ih);
   const dw=Math.round(iw*cropScale), dh=Math.round(ih*cropScale);
