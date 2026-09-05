@@ -119,7 +119,7 @@
     flex-direction:column;align-items:center;justify-content:center;gap:16px}
   #loading .spin{width:44px;height:44px;border:4px solid var(--line);border-top-color:var(--accent);
     border-radius:50%;animation:spin 1s linear infinite}
-  #loadTxt{color:var(--muted);font-size:14px}
+  #loadTxt{color:var(--muted);font-size:14px;text-align:center;max-width:80%;line-height:1.5;padding:0 16px;word-break:break-word}
   @keyframes spin{to{transform:rotate(360deg)}}
 
   .ico{display:inline-block;vertical-align:middle}
@@ -300,17 +300,22 @@ function injectScript(src,to){
     document.body.appendChild(s);
   });
 }
-// Cho OpenCV khoi tao xong (WASM)
-function waitCvReady(){
-  return new Promise((res,rej)=>{
-    if(window.cv && cv.Mat) return res();
-    if(window.cv){ cv['onRuntimeInitialized']=()=>res(); return; }
-    let n=0; const iv=setInterval(()=>{
-      if(window.cv){ clearInterval(iv);
-        if(cv.Mat) res(); else cv['onRuntimeInitialized']=()=>res();
-      } else if(++n>150){ clearInterval(iv); rej(new Error('cv khong khoi tao')); } // ~15s
-    },100);
-  });
+// Cho OpenCV khoi tao xong.
+// Ban Emscripten moi (MODULARIZE): window.cv la HAM factory tra ve Promise
+// -> phai goi cv() va await, roi gan lai window.cv = module that (co .Mat).
+async function waitCvReady(){
+  let mod=window.cv;
+  if(typeof mod==='function'){
+    mod=await withTimeout(mod(),120000,'khoi tao qua lau'); window.cv=mod;
+  }else if(mod && typeof mod.then==='function'){
+    mod=await withTimeout(mod,120000,'khoi tao qua lau'); window.cv=mod;
+  }else if(mod && !mod.Mat && 'onRuntimeInitialized' in mod){ // ban cu
+    await withTimeout(new Promise(r=>{ mod.onRuntimeInitialized=r; }),120000,'khoi tao qua lau');
+  }
+  if(!window.cv || !window.cv.Mat) throw new Error('Bo xu ly anh chua san sang');
+}
+function withTimeout(p,ms,msg){
+  return Promise.race([p, new Promise((_,rej)=>setTimeout(()=>rej(new Error(msg)),ms))]);
 }
 
 /* ===== Camera ===== */
