@@ -243,24 +243,43 @@ function updateCount(){
   }
 }
 
-/* ===== Nap OpenCV.js (lazy - chi khi can) ===== */
+/* ===== Nap OpenCV.js (lazy) - thu nhieu nguon, uu tien CDN nhanh ===== */
 function loadOpenCV(){
   return new Promise((resolve,reject)=>{
     if(cvReady) return resolve();
-    if(window._cvLoading) { window._cvLoading.then(resolve,reject); return; }
-    loading(true,'Đang tải bộ xử lý ảnh (lần đầu)…');
-    window._cvLoading = new Promise((res,rej)=>{
-      const s=document.createElement('script');
-      s.src='https://docs.opencv.org/4.10.0/opencv.js';
-      s.async=true;
-      s.onload=()=>{
-        if(window.cv && cv.Mat){ cvReady=true; res(); }
-        else cv['onRuntimeInitialized']=()=>{ cvReady=true; res(); };
-      };
-      s.onerror=()=>rej(new Error('Khong tai duoc OpenCV.js'));
-      document.body.appendChild(s);
+    if(window._cvLoading){ window._cvLoading.then(resolve,reject); return; }
+    loading(true,'Đang tải bộ xử lý ảnh lần đầu (có thể mất 20–40 giây)…');
+    const sources=[
+      'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.11.0-release.1/dist/opencv.js',
+      'https://docs.opencv.org/4.10.0/opencv.js'
+    ];
+    window._cvLoading=new Promise((res,rej)=>{
+      let idx=0;
+      function finishOk(done,to){ done.v=true; clearTimeout(to); cvReady=true; res(); }
+      function waitReady(done,to){
+        // cv co the da co nhung WASM chua init xong -> cho onRuntimeInitialized
+        if(window.cv && cv.Mat){ finishOk(done,to); return; }
+        if(window.cv){ cv['onRuntimeInitialized']=()=>{ if(!done.v) finishOk(done,to); }; return; }
+        let n=0; const iv=setInterval(()=>{
+          if(window.cv){ clearInterval(iv);
+            if(cv.Mat){ if(!done.v) finishOk(done,to); }
+            else cv['onRuntimeInitialized']=()=>{ if(!done.v) finishOk(done,to); };
+          } else if(++n>80){ clearInterval(iv); }
+        },100);
+      }
+      function tryNext(){
+        if(idx>=sources.length){ rej(new Error('Khong tai duoc tu moi nguon')); return; }
+        const url=sources[idx++];
+        const s=document.createElement('script'); s.src=url; s.async=true;
+        const done={v:false};
+        const to=setTimeout(()=>{ if(!done.v){ done.v=true; s.remove(); tryNext(); } },40000);
+        s.onload=()=>{ if(!done.v) waitReady(done,to); };
+        s.onerror=()=>{ if(!done.v){ done.v=true; clearTimeout(to); s.remove(); tryNext(); } };
+        document.body.appendChild(s);
+      }
+      tryNext();
     });
-    window._cvLoading.then(()=>{loading(false);resolve();}, e=>{loading(false);reject(e);});
+    window._cvLoading.then(()=>{loading(false);resolve();}, e=>{loading(false);window._cvLoading=null;reject(e);});
   });
 }
 
