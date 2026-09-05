@@ -243,44 +243,73 @@ function updateCount(){
   }
 }
 
-/* ===== Nap OpenCV.js (lazy) - thu nhieu nguon, uu tien CDN nhanh ===== */
+/* ===== Nap OpenCV.js (lazy) =====
+   Uu tien tai tu chinh repo (cung origin) bang fetch co hien % - khong cat som.
+   CDN ngoai chi la du phong neu file cung repo khong co. */
 function loadOpenCV(){
   return new Promise((resolve,reject)=>{
     if(cvReady) return resolve();
     if(window._cvLoading){ window._cvLoading.then(resolve,reject); return; }
-    loading(true,'Đang tải bộ xử lý ảnh lần đầu (có thể mất 20–40 giây)…');
-    const sources=[
-      './opencv.js',
-      'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.11.0-release.1/dist/opencv.js',
-      'https://docs.opencv.org/4.10.0/opencv.js'
-    ];
-    window._cvLoading=new Promise((res,rej)=>{
-      let idx=0;
-      function finishOk(done,to){ done.v=true; clearTimeout(to); cvReady=true; res(); }
-      function waitReady(done,to){
-        // cv co the da co nhung WASM chua init xong -> cho onRuntimeInitialized
-        if(window.cv && cv.Mat){ finishOk(done,to); return; }
-        if(window.cv){ cv['onRuntimeInitialized']=()=>{ if(!done.v) finishOk(done,to); }; return; }
-        let n=0; const iv=setInterval(()=>{
-          if(window.cv){ clearInterval(iv);
-            if(cv.Mat){ if(!done.v) finishOk(done,to); }
-            else cv['onRuntimeInitialized']=()=>{ if(!done.v) finishOk(done,to); };
-          } else if(++n>80){ clearInterval(iv); }
-        },100);
+    loading(true,'Đang tải bộ xử lý ảnh lần đầu…');
+    window._cvLoading=(async()=>{
+      let loaded=false;
+      // 1) Cung repo: fetch co tien trinh, khong gioi han thoi gian ngan
+      try{ await fetchScriptWithProgress('./opencv.js'); loaded=true; }
+      catch(e){ /* co the chua co file -> thu CDN du phong */ }
+      // 2) Du phong CDN
+      if(!loaded){
+        for(const url of [
+          'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.11.0-release.1/dist/opencv.js',
+          'https://docs.opencv.org/4.10.0/opencv.js'
+        ]){
+          try{ await injectScript(url,120000); loaded=true; break; }catch(e){}
+        }
       }
-      function tryNext(){
-        if(idx>=sources.length){ rej(new Error('Khong tai duoc tu moi nguon')); return; }
-        const url=sources[idx++];
-        const s=document.createElement('script'); s.src=url; s.async=true;
-        const done={v:false};
-        const to=setTimeout(()=>{ if(!done.v){ done.v=true; s.remove(); tryNext(); } },40000);
-        s.onload=()=>{ if(!done.v) waitReady(done,to); };
-        s.onerror=()=>{ if(!done.v){ done.v=true; clearTimeout(to); s.remove(); tryNext(); } };
-        document.body.appendChild(s);
-      }
-      tryNext();
-    });
+      if(!loaded) throw new Error('Khong tai duoc bo xu ly anh');
+      await waitCvReady();
+      cvReady=true;
+    })();
     window._cvLoading.then(()=>{loading(false);resolve();}, e=>{loading(false);window._cvLoading=null;reject(e);});
+  });
+}
+// Tai file js cung origin bang fetch, hien % tai, roi nap vao trang
+async function fetchScriptWithProgress(url){
+  const resp=await fetch(url,{cache:'force-cache'});
+  if(!resp.ok) throw new Error('HTTP '+resp.status);
+  const total=+resp.headers.get('content-length')||0;
+  const reader=resp.body.getReader();
+  let got=0; const chunks=[];
+  for(;;){
+    const {done,value}=await reader.read();
+    if(done) break;
+    chunks.push(value); got+=value.length;
+    loading(true, total ? ('Đang tải bộ xử lý ảnh… '+Math.round(got/total*100)+'%')
+                        : ('Đang tải bộ xử lý ảnh… '+(got/1048576).toFixed(1)+' MB'));
+  }
+  loading(true,'Đang khởi động bộ xử lý ảnh…');
+  const blobUrl=URL.createObjectURL(new Blob(chunks,{type:'text/javascript'}));
+  await injectScript(blobUrl,120000);
+}
+// Nap the script, co timeout
+function injectScript(src,to){
+  return new Promise((res,rej)=>{
+    const s=document.createElement('script'); s.src=src; s.async=true;
+    const t=setTimeout(()=>{ s.remove(); rej(new Error('timeout')); }, to||120000);
+    s.onload=()=>{ clearTimeout(t); res(); };
+    s.onerror=()=>{ clearTimeout(t); s.remove(); rej(new Error('script error')); };
+    document.body.appendChild(s);
+  });
+}
+// Cho OpenCV khoi tao xong (WASM)
+function waitCvReady(){
+  return new Promise((res,rej)=>{
+    if(window.cv && cv.Mat) return res();
+    if(window.cv){ cv['onRuntimeInitialized']=()=>res(); return; }
+    let n=0; const iv=setInterval(()=>{
+      if(window.cv){ clearInterval(iv);
+        if(cv.Mat) res(); else cv['onRuntimeInitialized']=()=>res();
+      } else if(++n>150){ clearInterval(iv); rej(new Error('cv khong khoi tao')); } // ~15s
+    },100);
   });
 }
 
