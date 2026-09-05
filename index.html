@@ -86,6 +86,7 @@
   .mode{padding:9px 16px;border-radius:20px;background:var(--panel-2);color:var(--muted);font-size:13px;
     white-space:nowrap;border:1px solid transparent}
   .mode.on{background:var(--accent);color:var(--accent-ink);font-weight:600}
+  .mode.flash{background:var(--accent);color:var(--accent-ink)}
 
   /* --- Man hinh danh sach trang --- */
   #pagesList{flex:1;overflow-y:auto;padding:12px;display:grid;grid-template-columns:repeat(2,1fr);gap:12px;align-content:start}
@@ -195,6 +196,11 @@
   <div id="pagesList">
     <div id="pagesEmpty">Chưa có trang nào.<br>Quay lại chụp để thêm trang giấy A4.</div>
   </div>
+  <div class="modes" id="sizeRow">
+    <span style="color:var(--muted);font-size:13px;align-self:center;padding:0 8px 0 4px">Khổ giấy PDF:</span>
+    <button class="mode on" data-size="a4">A4</button>
+    <button class="mode" data-size="a3">A3</button>
+  </div>
   <div class="actbar">
     <button class="btn" id="pagesBack">＋ Chụp thêm</button>
     <button class="btn primary" id="exportBtn">Xuất PDF</button>
@@ -212,7 +218,7 @@
    ========================================================================= */
 
 // --- Kich thuoc dau ra chuan A4 (~150 DPI) ---
-const A4_W = 1240, A4_H = 1754;   // ty le 1:1.414
+const A4_W = 1754, A4_H = 2480;   // ty le 1:1.414 - du net de in ca A4 (~210dpi) lan A3 (~150dpi)
 
 // --- Trang thai ---
 let cvReady = false;
@@ -221,6 +227,7 @@ let capturedCanvas = null;   // anh vua chup/chon (full)
 let corners = [];            // 4 goc [{x,y}] tren toa do canvas hien thi
 let cropScale = 1;           // ty le canvas hien thi so voi anh goc
 let currentMode = 'bw';
+let pageSize = 'a4';         // kho giay xuat PDF: a4 hoac a3
 let currentRotate = 0;       // do xoay ap dung cho ket qua (0/90/180/270)
 let warpedMat = null;        // anh da nan thang (mau) - de doi che do khong phai nan lai
 const pages = [];            // [{dataUrl}] cac trang da them
@@ -324,7 +331,8 @@ async function startCamera(){
   try{
     if(stream) stream.getTracks().forEach(t=>t.stop());
     stream = await navigator.mediaDevices.getUserMedia({
-      video:{ facingMode:{ideal:'environment'}, width:{ideal:1920}, height:{ideal:1080} },
+      video:{ facingMode:{ideal:'environment'}, width:{ideal:2560}, height:{ideal:1440},
+              advanced:[{focusMode:'continuous'}] },
       audio:false
     });
     $('video').srcObject = stream;
@@ -598,7 +606,7 @@ $('cropNext').onclick = ()=>{
 $('modes').addEventListener('click', e=>{
   const btn=e.target.closest('.mode'); if(!btn) return;
   const m=btn.dataset.mode;
-  if(m==='rotate'){ currentRotate=(currentRotate+90)%360; renderResult(); return; }
+  if(m==='rotate'){ currentRotate=(currentRotate+90)%360; btn.classList.add('flash'); setTimeout(()=>btn.classList.remove('flash'),260); renderResult(); return; }
   currentMode=m;
   document.querySelectorAll('.mode').forEach(x=>x.classList.remove('on'));
   btn.classList.add('on');
@@ -637,14 +645,23 @@ function renderPages(){
   list.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>{const i=+b.dataset.down;[pages[i+1],pages[i]]=[pages[i],pages[i+1]];renderPages();});
 }
 
-/* ===== Xuat PDF (dung khO A4) ===== */
+/* ===== Chon kho giay PDF ===== */
+$('sizeRow').addEventListener('click', e=>{
+  const b=e.target.closest('[data-size]'); if(!b) return;
+  pageSize=b.dataset.size;
+  document.querySelectorAll('#sizeRow .mode').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+});
+
+/* ===== Xuat PDF (dung kho da chon) ===== */
 $('exportBtn').onclick = async ()=>{
   if(!pages.length){ alert('Chưa có trang nào để xuất.'); return; }
   loading(true,'Đang tạo file PDF…');
   try{
     const { PDFDocument } = PDFLib;
     const pdf=await PDFDocument.create();
-    const PT_W=595.28, PT_H=841.89; // A4 tinh theo point
+    const PT={a4:[595.28,841.89], a3:[841.89,1190.55]}; // kich thuoc theo point
+    const [PT_W,PT_H]=PT[pageSize]||PT.a4;
     for(const pg of pages){
       const jpg=await pdf.embedJpg(pg.dataUrl);
       const page=pdf.addPage([PT_W,PT_H]);
@@ -655,7 +672,7 @@ $('exportBtn').onclick = async ()=>{
     const url=URL.createObjectURL(blob);
     const stamp=new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
     const a=document.createElement('a');
-    a.href=url; a.download=`Scan_A4_${stamp}.pdf`;
+    a.href=url; a.download=`Scan_${pageSize.toUpperCase()}_${stamp}.pdf`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),4000);
     loading(false);
