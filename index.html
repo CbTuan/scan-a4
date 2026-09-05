@@ -95,7 +95,7 @@
   .pcard .num{position:absolute;top:6px;left:6px;background:rgba(15,23,42,.85);color:var(--text);
     font-size:12px;font-weight:600;width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center}
   .pcard .acts{display:flex;border-top:1px solid var(--line)}
-  .pcard .acts button{flex:1;padding:8px;font-size:12px;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:4px}
+  .pcard .acts button{flex:1;padding:9px;font-size:17px;color:var(--muted);display:flex;align-items:center;justify-content:center;line-height:1}
   .pcard .acts button:active{background:var(--panel-2)}
   .pcard .acts button.del{color:var(--danger)}
   .pcard .acts button+button{border-left:1px solid var(--line)}
@@ -194,7 +194,7 @@
 <!-- ===== MAN HINH 4: DANH SACH TRANG ===== -->
 <section id="screenPages" class="screen">
   <div id="pagesList">
-    <div id="pagesEmpty">Chưa có trang nào.<br>Quay lại chụp để thêm trang giấy A4.</div>
+    <div id="pagesEmpty">Chưa có trang nào.<br>Quay lại chụp để thêm trang.</div>
   </div>
   <div class="modes" id="sizeRow">
     <span style="color:var(--muted);font-size:13px;align-self:center;padding:0 8px 0 4px">Khổ giấy PDF:</span>
@@ -628,30 +628,50 @@ $('thumbBtn').onclick = ()=>{ stopCamera(); renderPages(); show('screenPages'); 
 $('pagesBack').onclick = ()=>{ show('screenCam'); startCamera(); };
 function renderPages(){
   const list=$('pagesList');
-  if(!pages.length){ list.innerHTML='<div id="pagesEmpty">Chưa có trang nào.<br>Quay lại chụp để thêm trang giấy A4.</div>'; return; }
+  if(!pages.length){ list.innerHTML='<div id="pagesEmpty">Chưa có trang nào.<br>Quay lại chụp để thêm trang.</div>'; return; }
   list.innerHTML='';
   pages.forEach((p,i)=>{
     const d=document.createElement('div'); d.className='pcard';
     d.innerHTML=`<div class="num">${i+1}</div><img src="${p.dataUrl}">
       <div class="acts">
-        <button data-up="${i}" ${i===0?'disabled style=opacity:.3':''}>▲ Lên</button>
-        <button data-down="${i}" ${i===pages.length-1?'disabled style=opacity:.3':''}>Xuống ▼</button>
-        <button class="del" data-del="${i}">🗑 Xóa</button>
+        <button data-up="${i}" ${i===0?'disabled style=opacity:.3':''}>▲</button>
+        <button data-down="${i}" ${i===pages.length-1?'disabled style=opacity:.3':''}>▼</button>
+        <button data-rot="${i}">↻</button>
+        <button class="del" data-del="${i}">🗑</button>
       </div>`;
     list.appendChild(d);
   });
   list.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{pages.splice(+b.dataset.del,1);updateCount();renderPages();});
   list.querySelectorAll('[data-up]').forEach(b=>b.onclick=()=>{const i=+b.dataset.up;[pages[i-1],pages[i]]=[pages[i],pages[i-1]];renderPages();});
   list.querySelectorAll('[data-down]').forEach(b=>b.onclick=()=>{const i=+b.dataset.down;[pages[i+1],pages[i]]=[pages[i],pages[i+1]];renderPages();});
+  list.querySelectorAll('[data-rot]').forEach(b=>b.onclick=()=>rotatePageImage(+b.dataset.rot));
+}
+// Xoay 1 trang trong danh sach 90 do CW (dung canvas, khong can OpenCV)
+function rotatePageImage(i){
+  const img=new Image();
+  img.onload=()=>{
+    const c=document.createElement('canvas');
+    c.width=img.height; c.height=img.width;
+    const ctx=c.getContext('2d');
+    ctx.translate(c.width/2,c.height/2); ctx.rotate(Math.PI/2);
+    ctx.drawImage(img,-img.width/2,-img.height/2);
+    pages[i].dataUrl=c.toDataURL('image/jpeg',0.85);
+    updateCount(); renderPages();
+  };
+  img.src=pages[i].dataUrl;
 }
 
 /* ===== Chon kho giay PDF ===== */
 $('sizeRow').addEventListener('click', e=>{
   const b=e.target.closest('[data-size]'); if(!b) return;
-  pageSize=b.dataset.size;
-  document.querySelectorAll('#sizeRow .mode').forEach(x=>x.classList.remove('on'));
-  b.classList.add('on');
+  pageSize=b.dataset.size; updateSizeUI();
 });
+// Cap nhat giao dien theo kho giay dang chon (loi nhac chup + nut A4/A3)
+function updateSizeUI(){
+  const s=pageSize.toUpperCase();
+  const hint=$('camHint'); if(hint) hint.textContent='Đặt tờ giấy '+s+' nằm gọn trong khung, đủ sáng';
+  document.querySelectorAll('#sizeRow .mode').forEach(x=>x.classList.toggle('on',x.dataset.size===pageSize));
+}
 
 /* ===== Xuat PDF (dung kho da chon) ===== */
 $('exportBtn').onclick = async ()=>{
@@ -683,7 +703,7 @@ $('exportBtn').onclick = async ()=>{
 
 /* ===== Khoi dong ===== */
 window.addEventListener('load', ()=>{
-  updateCount();
+  updateCount(); updateSizeUI();
   if(IS_LOCAL){
     // Mo cuc bo: camera va tai OpenCV deu bi chan -> bao ro thay vi de nguoi dung loay hoay
     $('camError').querySelector('b').textContent='Cần mở qua https';
